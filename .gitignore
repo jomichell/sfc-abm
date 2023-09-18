@@ -1,0 +1,7 @@
+db.sqlite3
+*.pyc
+*.log
+*~
+\#*#
+settings.py
+wsgi.py
