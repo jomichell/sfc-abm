@@ -16,6 +16,10 @@ import sys
 import time
 import datetime
 
+
+
+
+
 LOG_LEVEL = "INFO"
 
 def log(msg, level = "INFO"):
@@ -59,7 +63,7 @@ pr      = 1    # labour productivity
 
 # strength of effect of capital
 # share on aggregate demand allocation
-zeta    = 0.9
+zeta    = 0.5
 
 years = range(start_year, end_year)
 
@@ -346,6 +350,10 @@ for year in years[1:]:
         # Production based on predicted sales and 
         # current excess inventories
         firm['y_s'][year] = iv_d - firm['iv'][year-1] + y_e
+
+        if firm['y_s'][year] < 0:
+            firm['y_s'][year] = 0
+        
         agg_y_s += firm['y_s'][year]
 
         # Wage bill = value of production y_s less proft margin
@@ -453,7 +461,6 @@ for year in years[1:]:
     ts['m'][year]   = agg_m
     ts['l'][year]   = agg_l
 
-
     print(""" summary firm level aggregates:
     Dl_d : {:f}
     f_lb : {:f}
@@ -532,7 +539,8 @@ for year in years[1:]:
     agg_f_d      = 0 # distributed profits
     agg_m_f      = 0 # firms' deposits
 
-    agg_writedown = 0 # the writedown to loans and hh deposits due to bankruptcy
+    agg_l_writedown = 0 # the writedown to loans due to bankruptcy
+    agg_m_writedown = 0 # the writedown hh deposits due to bankruptcy
     
     agg_kshare   = 0
     
@@ -631,34 +639,24 @@ for year in years[1:]:
         # sources (retained earnings + CHANGE in loans) -
         # uses    (investment)
 
-        
         firm['m_f'][year] = firm['m_f'][year-1] + (
             firm['f_r'][year] +
             (firm['l'][year] - firm['l'][year-1])) - (           # sources
             firm['i'][year])                                     # uses
 
-        #
         # BANKRUPTCY
-        #
-
-        #
-        # Check if this is correct
-        #
         
         if firm['m_f'][year] < 0:
             # Firm is bankrupt!
-            firm['m_f'][year] = 0
 
-
-            
-            # Write off its loans
+            # Write off the firms loans and 'overdrafts' (negative deposits)
             # HH take the hit for now
-            agg_writedown += (firm['l'][year] - firm['m_f'][year])
-            
-            #ts['m_h'][year] -= (firm['l'][year] - firm['m_f'][year])
-            #ts['m_t'][year] -= (firm['l'][year] - firm['m_f'][year])
-            #ts['l'][year] -= firm['l'][year]                        
+            agg_l_writedown += firm['l'][year]
+            agg_m_writedown += (firm['l'][year] - firm['m_f'][year])
+
+            firm['m_f'][year] = 0
             firm['l'][year] = 0
+
             #firm[k][year] = 0
             #firm[iv][year] = 0         
 
@@ -727,27 +725,31 @@ for year in years[1:]:
         (r_m * ts['m_h'][year-1]) + agg_f_d
     
     ts['m_h'][year] = ts['m_h'][year-1] + \
-        ts['y_hr'][year] - ts['c'][year] - agg_writedown # households deposits
+        ts['y_hr'][year] - ts['c'][year] - agg_m_writedown # households deposits
 
-    ts['l'][year] -= agg_writedown # adjust total loans for writedowns
+    ts['l'][year] -= agg_l_writedown # adjust total loans for writedowns
     
     ts['m_t'][year] = ts['m_h'][year] + ts['m_f'][year] # total deposits
 
             
     log(""" Aggregated firm level numbers:
     agg_m: {}
+    agg_l: {}
     agg_i: {}
     agg_y_s: {}
     agg_wb: {}
-    agg_l: {}
     kshare : {}
+    agg_l_writedown : {}
+    agg_m_writedown : {}
     """.format(
         agg_m,
+        agg_l,
         agg_i,
         agg_y_s,
         agg_wb,
-        agg_l,
-        agg_kshare
+        agg_kshare,
+        agg_l_writedown,
+        agg_m_writedown,
     ))
 
     log("macro k: {} micro k: {}".format(sol['k'], agg_k))
@@ -757,7 +759,7 @@ for year in years[1:]:
     log("micro f_r: {}".format(agg_f_r))
     log("micro f_d: {}".format(agg_f_d))
     log("micro m_f: {}".format(agg_m_f))
-    log("macro l: {}, macro m_t: {}".format(sol['l'], ts['m_t'][year]))
+    log("macro l: {}, macro m_t: {}".format(ts['l'][year], ts['m_t'][year]))
     log("macro r: {} micro r: {}".format(sol['r'], agg_r))
     #log("macro u: {} micro u: {}".format(sol['u'], agg_u))
     log("macro wb: {} micro wb: {}" .format(sol['wb'], agg_wb))
