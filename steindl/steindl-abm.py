@@ -6,32 +6,20 @@
 # corrected in this version of the code.
 
 import matplotlib.pyplot as pyplot
-from matplotlib import animation
-
 from series import *
 
 import numpy as np
-import sys
+import sys, time, datetime, logging
 
-import time
-import datetime
+# Change the below to DEBUG for more logging output
+logging.basicConfig(level=logging.INFO)
 
-
-
-
-
-LOG_LEVEL = "INFO"
-
-def log(msg, level = "INFO"):
-    if not level == "DEBUG" and LOG_LEVEL == "INFO":
-        print(msg)
-        
 #
 # START INITIALISATION
 #
 
-start_year = 950
-end_year   = 1450
+start_year = 1
+end_year   = 1000
 num_years  = end_year - start_year
 
 # Number of firms
@@ -63,9 +51,12 @@ pr      = 1    # labour productivity
 
 # strength of effect of capital
 # share on aggregate demand allocation
-zeta    = 0.5
+zeta    = 0.75
 
 years = range(start_year, end_year)
+
+
+logging.info("initialising")
 
 # Set up dict to store time series. This will be replaced
 # with a pandas dataframe 
@@ -124,7 +115,7 @@ ts['f_n'][start_year]   = 2.83
 ts['r'][start_year]    = 0.0583
 ts['u'][start_year]    = 1.457
 
-log("""Initial variable values: 
+logging.debug("""initial variable values: 
 y: {}
 y_hr: {}
 iv: {}
@@ -139,7 +130,7 @@ m_h: {}
     ts['m_f'][start_year],
     ts['m_h'][start_year]))
 
-print("**** Alocating initial firms' balance sheets")
+logging.debug("allocating initial firms' balance sheets")
 
 # Now set up the (sparse) firm balance sheets for the initial year with
 # an initial capital allocation and duplicates of the aggregates for
@@ -198,7 +189,7 @@ def solve_aggregate(year):
     """ This function solves the macro model for a given
     year. Effectively this is limited to calculating total expenditure 
     """
-    print("\n\*** Solving aggregate model for year {} ***\n".format(year))
+    logging.debug("solving aggregate model for year {}".format(year))
 
     r_l = r_l_bar
     r_m = r_l
@@ -264,13 +255,15 @@ def solve_aggregate(year):
 #  Main loop of iterative model solution
 #
 
+logging.info("starting simulation for {}".format(years))
+
 for year in years[1:]:
     # Main solution loop has three steps
     # 1) firm-level decision-making based on previous-year values.
     # 2) aggregate firm level decision and used these to solve macro model.
     # 3) allocate macro magnitudes among firms according to market shares.
 
-    print("*** Start of year {:d} ****".format(year))
+    logging.info("start of year {:d}".format(year))
 
     # some aggregate values are (weighted) totals of individual values
     agg_m        = 0
@@ -288,7 +281,7 @@ for year in years[1:]:
     
 
     # 1) Firm level decision making 
-    print("*** Firm-level decision making ****")
+    logging.debug("*** Firm-level decision making ****")
 
     # A stochastic element is used to distribute demand across firms:
     # we assign a random 'share' magnitude to each firm which is then used
@@ -413,7 +406,7 @@ for year in years[1:]:
         agg_l  += firm['l'][year]
         agg_Dl_d += firm['l'][year] - firm['l'][year-1]
 
-        log("""Firm -
+        logging.log(8, """Firm -
         m_f(-1) : {:f}
         g_i     : {:f} 
         i     : {:f}
@@ -439,9 +432,9 @@ for year in years[1:]:
             lq_e,
             firm['l'][year] - firm['l'][year-1],
             firm['l'][year]         
-        ), "DEBUG")
+        ))
 
-    log("""Inserting aggregates from micro:
+    logging.debug("""Inserting aggregates from micro:
     y_s: {}
     m  : {}
     i: {}
@@ -461,7 +454,7 @@ for year in years[1:]:
     ts['m'][year]   = agg_m
     ts['l'][year]   = agg_l
 
-    print(""" summary firm level aggregates:
+    logging.debug(""" summary firm level aggregates:
     Dl_d : {:f}
     f_lb : {:f}
     lq_d : {:f}     
@@ -479,7 +472,7 @@ for year in years[1:]:
 
     sol = solve_aggregate(year)
     
-    print("""macro solutions
+    logging.debug("""macro solutions
     y    :{:f}
     y_s  :{:f}
     iv   :{:f}
@@ -506,7 +499,7 @@ for year in years[1:]:
         ))
 
     if sol['y'] < 0 or sol['y_s'] < 0:
-        print("Unstable - exiting")
+        logging.critical("Unstable - exiting")
         sys.exit()
 
     # 
@@ -551,7 +544,7 @@ for year in years[1:]:
     # Post-aggregate solution
     #
 
-    print("*** post-expenditure firm level calculations ****")
+    logging.debug("*** post-expenditure firm level calculations ****")
 
 
     xts['hedge'][year] = 0
@@ -682,7 +675,7 @@ for year in years[1:]:
         firm['size'][year] = firm['k_share'][year] * num_firms 
 
 
-        log("""Firm -
+        logging.log(8, """Firm -
         k:     {:f},
         y:     {:f},
         wb_d:  {:f},                
@@ -709,7 +702,7 @@ for year in years[1:]:
             firm['l'][year],                        
             firm['m_f'][year],
             firm['iv'][year]
-        ), "DEBUG")
+        ))
 
     # Now back to macro to do retained profits and monetary
     # variables
@@ -732,7 +725,7 @@ for year in years[1:]:
     ts['m_t'][year] = ts['m_h'][year] + ts['m_f'][year] # total deposits
 
             
-    log(""" Aggregated firm level numbers:
+    logging.debug(""" Aggregated firm level numbers:
     agg_m: {}
     agg_l: {}
     agg_i: {}
@@ -752,20 +745,21 @@ for year in years[1:]:
         agg_m_writedown,
     ))
 
-    log("macro k: {} micro k: {}".format(sol['k'], agg_k))
-    log("macro y: {} micro y: {}".format(sol['y'], agg_y))
-    log("macro iv:{} micro iv: {}".format(sol['iv'], agg_iv))
-    log("macro f_t: {} micro f_t: {}".format(sol['f_t'], agg_f_t))
-    log("micro f_r: {}".format(agg_f_r))
-    log("micro f_d: {}".format(agg_f_d))
-    log("micro m_f: {}".format(agg_m_f))
-    log("macro l: {}, macro m_t: {}".format(ts['l'][year], ts['m_t'][year]))
-    log("macro r: {} micro r: {}".format(sol['r'], agg_r))
-    #log("macro u: {} micro u: {}".format(sol['u'], agg_u))
-    log("macro wb: {} micro wb: {}" .format(sol['wb'], agg_wb))
+    logging.debug("macro k: {} micro k: {}".format(sol['k'], agg_k))
+    logging.debug("macro y: {} micro y: {}".format(sol['y'], agg_y))
+    logging.debug("macro iv:{} micro iv: {}".format(sol['iv'], agg_iv))
+    logging.debug("macro f_t: {} micro f_t: {}".format(sol['f_t'], agg_f_t))
+    logging.debug("micro f_r: {}".format(agg_f_r))
+    logging.debug("micro f_d: {}".format(agg_f_d))
+    logging.debug("micro m_f: {}".format(agg_m_f))
+    logging.debug("macro l: {}, macro m_t: {}".format(ts['l'][year], ts['m_t'][year]))
+    logging.debug("macro r: {} micro r: {}".format(sol['r'], agg_r))
+    #loging.debugg("macro u: {} micro u: {}".format(sol['u'], agg_u))
+    logging.debug("macro wb: {} micro wb: {}" .format(sol['wb'], agg_wb))
 
-    print("*** End of year {:d} ****".format(year))
+    logging.debug("*** End of year {:d} ****".format(year))
 
+logging.info("simulation complete")
 
 #
 # Generate summary graphics and animations
@@ -1050,13 +1044,13 @@ def mk_charts(start_year, end_year, num_years, years,
     #
     
     
-    fdist_1 = []
-    fdist_2 = []
-    fdist_3 = []
-    fdist_4 = []
-    fdist_5 = []
-    fdist_6 = []
-    fdist_7 = []
+#    fdist_1 = []
+#    fdist_2 = []
+#    fdist_3 = []
+#    fdist_4 = []
+#    fdist_5 = []
+#    fdist_6 = []
+#
     
     firm_size_list   = []
     firm_k_list      = []   
@@ -1070,14 +1064,13 @@ def mk_charts(start_year, end_year, num_years, years,
     firm_g_list      = []       
     
     for firm in firm_ts:
-        fdist_1.append(firm['size'][950])
-        fdist_2.append(firm['size'][1000])
-        fdist_3.append(firm['size'][1050])
-        fdist_4.append(firm['size'][1100])
-        fdist_5.append(firm['size'][1150])
-        fdist_6.append(firm['size'][1200])
-        fdist_7.append(firm['size'][1249])      
-    
+#        fdist_1.append(firm['size'][1])
+#        fdist_2.append(firm['size'][200])
+#        fdist_3.append(firm['size'][400])
+#        fdist_4.append(firm['size'][600])
+#        fdist_5.append(firm['size'][800])
+#        fdist_6.append(firm['size'][1000])      
+#    
         firm_size_list.append(firm['size'][year])
         firm_k_list.append(firm['k'][year])       
         firm_r_list.append(firm['r'][year])
@@ -1093,31 +1086,30 @@ def mk_charts(start_year, end_year, num_years, years,
             )
         firm_g_list.append(firm['g_i'][year])
     
-    pyplot.clf()
-    
-    n, bins, patches = pyplot.hist([fdist_1,
-                                    fdist_2,
-                                    fdist_3,
-                                    fdist_4,
-                                    fdist_5,
-                                    fdist_6,
-                                    fdist_7],
-                                   bins=100,
-                                   histtype='step')
-    
-    pyplot.savefig('fdist.png')
-    pyplot.savefig('fdist.pdf') 
-
-    pyplot.clf()
-    
-    n, bins, patches = pyplot.hist([fdist_1,
-                                    firm_size_list],
-                                   bins=100,
-                                   histtype='step')
-    
-    pyplot.savefig('fdist-simple.png')
-    pyplot.savefig('fdist-simple.pdf')  
-
+#     pyplot.clf()
+#     
+#     n, bins, patches = pyplot.hist([fdist_1,
+#                                     fdist_2,
+#                                     fdist_3,
+#                                     fdist_4,
+#                                     fdist_5,
+#                                     fdist_6],
+#                                    bins=100,
+#                                    histtype='step')
+#     
+#     pyplot.savefig('fdist.png')
+#     pyplot.savefig('fdist.pdf') 
+# 
+#     pyplot.clf()
+#     
+#     n, bins, patches = pyplot.hist([fdist_1,
+#                                     firm_size_list],
+#                                    bins=100,
+#                                    histtype='step')
+#     
+#     pyplot.savefig('fdist-simple.png')
+#     pyplot.savefig('fdist-simple.pdf')  
+# 
     
     #
     # Distribution of profit rate among firms
@@ -1261,9 +1253,10 @@ def mk_charts(start_year, end_year, num_years, years,
     pyplot.savefig('fdist-g.png')
     pyplot.savefig('fdist-g.pdf')   
 
-    print("**** Finished plotting graphs")
+    logging.info("Finished plotting graphs")
 
-    
+
+logging.basicConfig(level=logging.INFO)
 mk_charts(start_year, end_year, num_years, years,
           ts, firm_ts)
 
