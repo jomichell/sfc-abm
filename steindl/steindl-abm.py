@@ -14,12 +14,11 @@ import sys, time, datetime, logging
 # Change the below to DEBUG for more logging output
 logging.basicConfig(level=logging.INFO)
 
-#
+
 # START INITIALISATION
-#
 
 start_year = 1
-end_year   = 1000
+end_year   = 500
 num_years  = end_year - start_year
 
 # Number of firms
@@ -51,7 +50,7 @@ pr      = 1    # labour productivity
 
 # strength of effect of capital
 # share on aggregate demand allocation
-zeta    = 0.75
+zeta    = 0.9
 
 years = range(start_year, end_year)
 
@@ -499,7 +498,7 @@ for year in years[1:]:
         ))
 
     if sol['y'] < 0 or sol['y_s'] < 0:
-        logging.critical("Unstable - exiting")
+        logging.critical("Negative expenditure or production, y:{}, y_s{}".format(sol['y'], sol['y_s']))
         sys.exit()
 
     # 
