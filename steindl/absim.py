@@ -35,10 +35,11 @@ class SimBloc:
         return agg_vars
 
     # allow direct 'dot' access on the class to the current
-    # period state variables
+    # period state variables (decided against this,
+    # better to use container-like access).
 
-    def __getattr__(self, item):
-        return self.svars[0][item]
+    # def __getattr__(self, item):
+    #    return self.svars[0][item]
 
     # allow container-like access to the state variable dicts
     def __getitem__(self, idx):

@@ -5,7 +5,6 @@ import pandas as pd
 from absim import SimBloc
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger()
 
 # -------------------------------------------------------------
 #  start of model definition
@@ -41,8 +40,8 @@ class Steindl(SimBloc):
         # aggregate investment spending over firms
         c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
 
-        # get consumption spending from hh bloc
-        c.C = self.hh.C
+        # copy consumption spending from hh bloc
+        c.C = self.hh[0].C
         c.Y = c.I + c.C
 
     def calc_aggregate2(self):
@@ -57,7 +56,7 @@ class Steindl(SimBloc):
         c.Y_hr = c.WB + (r_m * bank[-1].D_h) + c.F_d
 
         # copy results to household sector
-        self.hh.svars[0].Y_hr = c.Y_hr
+        self.hh[0].Y_hr = c.Y_hr
 
         bank.update_hh_deposits(c.Y_hr - c.C)
         
@@ -198,17 +197,14 @@ class Firm(SimBloc):
 
         logging.debug("firm init vars from model fr: {}".format(init_vars))
         
-        # set up a fixed number of firms with a
-        # random allocation of capital
-
+        # create fixed number of firms with randomised shares of main variables
         # Could replace this with a dirichlet distribution?
         K_rand = model.rng.random(num_firms)
         K_rand = K_rand/K_rand.sum() 
         
         firms = []
-        for f in range(num_firms):
+        for K_share in K_rand:
             new_firm = Firm(model)
-            K_share = K_rand[f]
 
             new_firm.set_svars(
                 lag  = 0,
@@ -346,7 +342,7 @@ class Firm(SimBloc):
         c.D_f = l1.D_f + delta_D_f
             
         # adjust the bank's aggregate balance sheet
-        self.model.bank.update_firms_deposits(delta_D_f)
+        bank.update_firms_deposits(delta_D_f)
         
         if c.D_f < 0:
             # firm is bankrupt. write off the firms loans and
@@ -356,8 +352,6 @@ class Firm(SimBloc):
             c.D_f = 0
 
         c.r   = c.F_t / c.K # profit rate
-
-        
         c.u  = c.Y * (p.v / c.K)  # utilisation. should this be Y or Y_s?
 #        c.u  = c.Y_s * (p.v / c.K)  # utilisation. should this be Y or Y_s?
 
@@ -365,50 +359,4 @@ class Firm(SimBloc):
         c.K_share = c.K / m.K
         c.fsize = c.K_share * self.model.num_firms 
 
-        
-        
-# ---------------------------------------------------------------------
-# Change the line below to change from the default
-logger.setLevel(logging.INFO)
-
-steindl = Steindl(num_firms = 1000, num_periods = 500, seed = 1)
-
-steindl.set_svars(
-    Y    = 34,
-    Y_hr = 27,
-    K    = 100,
-    I    = 10,
-    IV   = 5,
-    F_n  = 2.8,
-    F_r  = 2.1,
-    D_h  = 80,
-    D_f  = 136,
-    L    = 80 + 136,
-    r    = 0.06,
-    u    = 1.46
-)
-
-steindl.set_params(
-    alpha1  = 0.7,  # consumption out of income
-    alpha2  = 0.1,  # consumption out of wealth
-    alpha3  = 0.0,  # inelastic saving out of salaries etc.
-    gamma0  = 0.02, # trend growth
-    gamma_r = 0.2,  # profit rate multiplier
-    gamma_u = 0.04, # utilisation rate multplier
-    iota    = 0.2,  # desired inventory to output ratio
-    theta   = 0.5,  # desired liquidity ratio
-    v       = 4,    # capital full output ratio
-    llambda = 0.75, # profit retention ratio (lambda reserved)
-    r_l_bar = 0.03, # interest rate
-    tau     = 0.25, # mark-up
-    pr      = 1,    # labour productivity
-    zeta    = 0.9   # size to revenue feedback 
-)
-
-steindl.init_sectors()
-
-#steindl.run()
-
-
-
- 
+    
