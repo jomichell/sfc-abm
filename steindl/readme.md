@@ -7,7 +7,7 @@ This is draft documention. This is a work in progress.
 
 ## Quickstart ##
 
-Some quick and rough instructions on the main features of the model. For example simulation results, see: [simulations](./Steindl_ABM_simulations.ipynb).
+Some quick and rough instructions on the main features of the model. For example simulation results, see: [simulations](./Steindl_ABM_simulations.md).
 
 To create an agent such as firm with given parameters and state variables, we subclass `SimBloc`(see below):
 
