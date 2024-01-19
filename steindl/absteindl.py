@@ -19,6 +19,8 @@ class Steindl(SimBloc):
         self.num_firms = num_firms
         self.num_periods = num_periods
 
+        # initialise the random number generator, optionally
+        # with a specific seed.
         self.rng = np.random.default_rng(seed)
         
     def init_sectors(self):
@@ -37,7 +39,7 @@ class Steindl(SimBloc):
     def calc_aggregate(self):
         (p, c, l1, bank) = self.unpack()
 
-        # aggregate investment spending over firms
+        # sum total investment spending across all firms
         c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
 
         # copy consumption spending from hh bloc

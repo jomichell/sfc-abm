@@ -65,13 +65,17 @@ class SimBloc:
             self.params = SimVars()
             self.model = self
 
+    def __repr__(self):
+        return """state vars:{}, params:{}""".format(
+            self.svars, self.params)
+            
     def unpack(self):
         return (self.params,
                 self.svars[0], self.svars[-1],
                 self.model.bank)
         
     def set_svars(self, lag=0, **kwargs):
-        self.svars[lag].set(**kwargs)
+        self.svars[0-lag].set(**kwargs)
 
     def set_params(self, **kwargs):
         self.params.set(**kwargs)

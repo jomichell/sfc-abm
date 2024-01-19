@@ -5,3 +5,4 @@ db.sqlite3
 \#*#
 settings.py
 wsgi.py
+.ipynb_checkpoints
