@@ -15,6 +15,9 @@ class Steindl(SimBloc):
     
     def __init__(self, num_firms = 1000, num_periods = 500, seed = None):
         super().__init__()
+
+
+        self.initialised = False
         
         self.num_firms = num_firms
         self.num_periods = num_periods
@@ -22,6 +25,11 @@ class Steindl(SimBloc):
         # initialise the random number generator, optionally
         # with a specific seed.
         self.rng = np.random.default_rng(seed)
+
+    def unpack(self):
+        ''' overrides the default unpack function by adding a
+        reference to the bank object '''
+        return super().unpack() + (self.model.bank,)
         
     def init_sectors(self):
         logging.info("initialising model with {} periods {} firms"\
@@ -35,6 +43,8 @@ class Steindl(SimBloc):
         self.bank[-1].update(
             self[-1].subset(['L', 'D_h', 'D_f'])
         )
+
+        self.initialised = True
         
     def calc_aggregate(self):
         (p, c, l1, bank) = self.unpack()
@@ -108,8 +118,11 @@ class Steindl(SimBloc):
         self.results = pd.DataFrame.from_dict(results)  
                 
     def __repr__(self):
-        return """sectors\n hh: {}\n firms: {} firms\n bank: {}\n\nparams: {}\nstate vars:{}""".format(
-            self.hh, self.num_firms, self.bank, self.params, self.svars)
+        if not self.initialised:
+            return super().__repr__()
+        else:
+            return """sectors\n hh: {}\n firms: {} firms\n bank: {}\n\nparams: {}\nstate vars:{}""".format(
+                self.hh, self.num_firms, self.bank, self.params, self.svars)
                 
 class Bank(SimBloc):
     """ Banking sector """
@@ -167,15 +180,15 @@ class Bank(SimBloc):
         self.incr('D_f', amount)
 
         
-    def __repr__(self):
-        (p, c, l1, bank) = self.unpack()
-
-        total_assets = c.L
-        total_liabs  = c.D_f + c.D_h
-
-        bs_str = "\nAssets        | Liabs\n L {:>10.2f} | D_f {:>10.2f}\n              | D_h {:>10.2f}\n------------------------------\n   {:>10.2f} |     {:>10.2f} "
-        
-        return bs_str.format(c.L, c.D_f, c.D_h, total_assets, total_liabs)
+    # def __repr__(self):
+    #     (p, c, l1, bank) = self.unpack()
+    # 
+    #     total_assets = c.L
+    #     total_liabs  = c.D_f + c.D_h
+    # 
+    #     bs_str = "\nAssets        | Liabs\n L {:>10.2f} | D_f {:>10.2f}\n              | D_h {:>10.2f}\n------------------------------\n   {:>10.2f} |     {:>10.2f} "
+    #     
+    #     return bs_str.format(c.L, c.D_f, c.D_h, total_assets, total_liabs)
 
     
 class Household(SimBloc):
