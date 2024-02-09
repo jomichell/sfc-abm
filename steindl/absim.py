@@ -48,11 +48,13 @@ class SimBloc:
     def to_dict(self):
         return dict(self.svars[0])
     
-    def __init__(self, model = None):
+    def __init__(self, model = None, lags = 1):
 
         # associate a bloc with a parent model if specified
         # and copy initial state variables. Parameters
         # are shared with parent models
+        self.lags = lags
+        
         if model is not None:
             self.model = model
             self.svars = copy.deepcopy(model.svars)
@@ -60,19 +62,30 @@ class SimBloc:
         else:
             # dict of state variables, indexed by lag
             self.svars = {}
-            self.svars[0] = SimVars()
-            self.svars[-1] = SimVars()
+
+#            for lag in range(0-lags, 1):
+            for lag in self.get_lags():
+                self.svars[lag] = SimVars()
+
             self.params = SimVars()
             self.model = self
 
     def __repr__(self):
         return """state vars:{}, params:{}""".format(
             self.svars, self.params)
-            
+
+    def get_lags(self):
+        return list(range(0-self.lags, 1))
+    
     def unpack(self):
-        return (self.params,
-                self.svars[0], self.svars[-1],
-                self.model.bank)
+        ''' return a tuple containing model parameters plus
+        state vars for each lag '''
+
+        lagged_svars = [self.svars[lag] for lag in self.get_lags()]
+        return tuple([self.params] + lagged_svars)
+    
+#                self.svars[0], self.svars[-1],
+#                self.model.bank)
         
     def set_svars(self, lag=0, **kwargs):
         self.svars[0-lag].set(**kwargs)
@@ -84,7 +97,10 @@ class SimBloc:
         return self.svars[lag]
         
     def lag_svars(self):
-        self.svars[-1] = self.svars[0]
+        #for lag in self.get_lags():
+        for lag in self.get_lags()[:-1]:
+            self.svars[lag] = self.svars[lag+1]
+
         self.svars[0] = SimVars()
 
     def incr(self, var, amount):
