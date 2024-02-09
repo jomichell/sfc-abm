@@ -26,11 +26,6 @@ class Steindl(SimBloc):
         # with a specific seed.
         self.rng = np.random.default_rng(seed)
 
-    def unpack(self):
-        ''' overrides the default unpack function by adding a
-        reference to the bank object '''
-        return super().unpack() + (self.model.bank,)
-        
     def init_sectors(self):
         logging.info("initialising model with {} periods {} firms"\
                      .format(self.num_periods, self.num_firms))
@@ -47,7 +42,7 @@ class Steindl(SimBloc):
         self.initialised = True
         
     def calc_aggregate(self):
-        (p, c, l1, bank) = self.unpack()
+        (p, c, l1) = self.unpack()
 
         # sum total investment spending across all firms
         c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
@@ -57,7 +52,8 @@ class Steindl(SimBloc):
         c.Y = c.I + c.C
 
     def calc_aggregate2(self):
-        (p, c, l1, bank) = self.unpack()
+        (p, c, l1) = self.unpack()
+        bank = self.model.bank
 
         # aggregate wage bill and distributed profits over firms
         c.update(SimBloc.aggregate(self.firms, ['WB', 'F_d']))
@@ -195,7 +191,9 @@ class Household(SimBloc):
     """ Household sector """
 
     def decide_cons(self):
-        (p, c, l1, bank) = self.unpack()
+        (p, c, l1) = self.unpack()
+        bank = self.model.bank
+        
         c.C = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h # cons spending
 
     def __repr__(self):
@@ -255,8 +253,9 @@ class Firm(SimBloc):
  
     def calc_production(self):
         """ decisions made before current period revenue is known"""
-        (p, c, l1, bank) = self.unpack()
-
+        (p, c, l1) = self.unpack()
+        bank = self.model.bank
+        
         # Investment (expenditure) function in growth terms
         c.g_I = p.gamma0 + (p.gamma_r * l1.r) + (p.gamma_u * l1.u)
 
@@ -319,12 +318,13 @@ class Firm(SimBloc):
         else:
             L_req = c.D_f_d - c.D_f_e
 
-        delta_L = self.model.bank.request_loan(L_req)            
+        delta_L = bank.request_loan(L_req)            
         c.L = l1.L + delta_L
 
     def calc_financing(self):
         """ firm decisions after revenue is known plus balance sheet updates """
-        (p, c, l1, bank) = self.unpack()
+        (p, c, l1) = self.unpack()
+        bank = self.model.bank
         m = self.model[0]
 
         # linear combination of capital size and stochastic 'share'

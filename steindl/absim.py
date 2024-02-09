@@ -82,6 +82,7 @@ class SimBloc:
         state vars for each lag '''
 
         lagged_svars = [self.svars[lag] for lag in self.get_lags()]
+        lagged_svars.reverse()
         return tuple([self.params] + lagged_svars)
     
 #                self.svars[0], self.svars[-1],
