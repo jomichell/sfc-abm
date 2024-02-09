@@ -107,7 +107,7 @@ class Steindl(SimBloc):
             
             for f in self.firms:
                 f.calc_financing()
-
+ 
             self.calc_aggregate2()
 
             #self[0].update(self.bank[0].subset(['D_f', 'D_h', 'L']))
@@ -119,14 +119,6 @@ class Steindl(SimBloc):
                 
         logging.info("simulation complete")
         self.results = pd.DataFrame.from_dict(results)  
-                
-#    def __repr__(self):
-#        if not self.initialised:
-#            return super().__repr__()
-#        else:
-#            return """sectors\n hh: {}\n firms: {} firms\n bank: {}\n\nparams: {}\nstate vars:{}""".format(
-#                self.hh, self.num_firms, self.bank, self.params, self.svars)
-#
                 
 class Bank(SimBloc):
     """ Banking sector """
@@ -166,26 +158,7 @@ class Bank(SimBloc):
         # households take the hit for both
         c.D_h += (0 - (loan_amount + overdraft_amount))
 
-    # def update_hh_deposits(self, amount):
-    #     """ adjust aggregate household deposits """
-    #     self.incr('D_h', amount)
-    # 
-    # def update_firms_deposits(self, amount):
-    #     """ adjust aggregate firms deposits """
-    #     self.incr('D_f', amount)
-
         
-    # def __repr__(self):
-    #     (p, c, l1, bank) = self.unpack()
-    # 
-    #     total_assets = c.L
-    #     total_liabs  = c.D_f + c.D_h
-    # 
-    #     bs_str = "\nAssets        | Liabs\n L {:>10.2f} | D_f {:>10.2f}\n              | D_h {:>10.2f}\n------------------------------\n   {:>10.2f} |     {:>10.2f} "
-    #     
-    #     return bs_str.format(c.L, c.D_f, c.D_h, total_assets, total_liabs)
-
-    
 class Household(SimBloc):
     """ Household sector """
 
