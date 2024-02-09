@@ -15,9 +15,6 @@ class Steindl(SimBloc):
     
     def __init__(self, num_firms = 1000, num_periods = 500, seed = None):
         super().__init__()
-
-
-        self.initialised = False
         
         self.num_firms = num_firms
         self.num_periods = num_periods
@@ -27,6 +24,9 @@ class Steindl(SimBloc):
         self.rng = np.random.default_rng(seed)
 
     def initialise(self):
+        ''' sets up the model by initialising firm objects
+        and state variables'''
+        
         logging.info("initialising model with {} periods {} firms"\
                      .format(self.num_periods, self.num_firms))
 
@@ -44,37 +44,10 @@ class Steindl(SimBloc):
         # set up firms
         self.firms = Firm.init_firms(self.num_firms, model = self)
         
-        self.initialised = True
-        
-    def calc_aggregate(self):
-        (p, c, l1) = self.unpack()
-
-        # sum total investment spending across all firms
-        c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
-
-        # get consumption spending from hh bloc
-        c.C = self.hh[0].C
-        c.Y = c.I + c.C
-
-    def calc_aggregate2(self):
-        (p, c, l1) = self.unpack()
-        bank = self.bank
-
-        # get aggregate wage bill and distributed profits
-        c.update(SimBloc.aggregate(self.firms, ['WB', 'F_d']))
-
-        r_m = p.r_l_bar
-
-        # household disposable income
-        Y_hr = c.WB + (r_m * bank[-1].D_h) + c.F_d
-        
-        # household disposable income
-        self.hh[0].Y_hr = Y_hr
-
-        # update HH bank deposit
-        bank[0].D_h += (Y_hr - c.C)
-        
     def run(self, num_periods = None):
+        ''' runs the main simulation loop and collects
+        the numeric results '''
+        
         logging.info("starting simulation for {} periods with {} firms".\
                      format(self.num_periods, self.num_firms))
 
@@ -119,6 +92,35 @@ class Steindl(SimBloc):
                 
         logging.info("simulation complete")
         self.results = pd.DataFrame.from_dict(results)  
+
+        
+    def calc_aggregate(self):
+        (p, c, l1) = self.unpack()
+
+        # sum total investment spending across all firms
+        c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
+
+        # get consumption spending from hh bloc
+        c.C = self.hh[0].C
+        c.Y = c.I + c.C
+
+    def calc_aggregate2(self):
+        (p, c, l1) = self.unpack()
+        bank = self.bank
+
+        # get aggregate wage bill and distributed profits
+        c.update(SimBloc.aggregate(self.firms, ['WB', 'F_d']))
+
+        r_m = p.r_l_bar
+
+        # household disposable income
+        Y_hr = c.WB + (r_m * bank[-1].D_h) + c.F_d
+        
+        # household disposable income
+        self.hh[0].Y_hr = Y_hr
+
+        # update HH bank deposit
+        bank[0].D_h += (Y_hr - c.C)
                 
 class Bank(SimBloc):
     """ Banking sector """
