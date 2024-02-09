@@ -49,30 +49,37 @@ class SimBloc:
         return dict(self.svars[0])
     
     def __init__(self, model = None, lags = 1):
+        self.lags = lags
 
         # associate a bloc with a parent model if specified
         # and copy initial state variables. Parameters
         # are shared with parent models
-        self.lags = lags
-        
         if model is not None:
             self.model = model
-            self.svars = copy.deepcopy(model.svars)
+            #self.svars = copy.deepcopy(model.svars)
             self.params = model.params
         else:
-            # dict of state variables, indexed by lag
-            self.svars = {}
-
-#            for lag in range(0-lags, 1):
-            for lag in self.get_lags():
-                self.svars[lag] = SimVars()
-
             self.params = SimVars()
-            self.model = self
+            self.model = None
+            
+            # dict of state variables, indexed by lag
+        self.svars = {}
+
+        for lag in self.get_lags():
+            self.svars[lag] = SimVars()
+
+        # a bloc of variables which use for initialisation but
+        # do not become state variables.
+        self.ivars = SimVars()
+        
 
     def __repr__(self):
-        return """state vars:{}, params:{}""".format(
-            self.svars, self.params)
+        if self.model is None:
+            return """state vars:{}, params:{}""".format(
+                self.svars, self.params)
+        else:
+            return """state vars:{}""".format(
+                self.svars)
 
     def get_lags(self):
         return list(range(0-self.lags, 1))
@@ -94,6 +101,10 @@ class SimBloc:
     def set_params(self, **kwargs):
         self.params.set(**kwargs)
 
+    def set_ivars(self, **kwargs):
+        self.ivars.set(**kwargs)
+
+        
     def get_svars(self, lag=0):
         return self.svars[lag]
         
@@ -104,10 +115,10 @@ class SimBloc:
 
         self.svars[0] = SimVars()
 
-    def incr(self, var, amount):
-        if var in self.svars[0].keys():
-            self.svars[0][var] += amount
-        else:
-            self.svars[0][var] = amount
+    #def incr(self, var, amount):
+    #    if var in self.svars[0].keys():
+    #        self.svars[0][var] += amount
+    #    else:
+    #        self.svars[0][var] = amount
 
 

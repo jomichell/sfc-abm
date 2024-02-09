@@ -26,19 +26,24 @@ class Steindl(SimBloc):
         # with a specific seed.
         self.rng = np.random.default_rng(seed)
 
-    def init_sectors(self):
+    def initialise(self):
         logging.info("initialising model with {} periods {} firms"\
                      .format(self.num_periods, self.num_firms))
 
-        # create the sectors
+        i = self.ivars
+        
+        # create HH and bank and assign state variables
         self.hh = Household(model=self)
-        self.firms = Firm.init_firms(self.num_firms, model = self)
+        self.hh[0].Y_hr = i.Y_hr
+
         self.bank = Bank(model=self)
-
-        self.bank[-1].update(
-            self[-1].subset(['L', 'D_h', 'D_f'])
-        )
-
+        self.bank[0].L   = i.L
+        self.bank[0].D_h = i.D_h
+        self.bank[0].D_f = i.D_h
+        
+        # set up firms
+        self.firms = Firm.init_firms(self.num_firms, model = self)
+        
         self.initialised = True
         
     def calc_aggregate(self):
@@ -47,26 +52,27 @@ class Steindl(SimBloc):
         # sum total investment spending across all firms
         c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
 
-        # copy consumption spending from hh bloc
+        # get consumption spending from hh bloc
         c.C = self.hh[0].C
         c.Y = c.I + c.C
 
     def calc_aggregate2(self):
         (p, c, l1) = self.unpack()
-        bank = self.model.bank
+        bank = self.bank
 
-        # aggregate wage bill and distributed profits over firms
+        # get aggregate wage bill and distributed profits
         c.update(SimBloc.aggregate(self.firms, ['WB', 'F_d']))
 
         r_m = p.r_l_bar
 
-        # interest payments should happen in bank sector
-        c.Y_hr = c.WB + (r_m * bank[-1].D_h) + c.F_d
+        # household disposable income
+        Y_hr = c.WB + (r_m * bank[-1].D_h) + c.F_d
+        
+        # household disposable income
+        self.hh[0].Y_hr = Y_hr
 
-        # copy results to household sector
-        self.hh[0].Y_hr = c.Y_hr
-
-        bank.update_hh_deposits(c.Y_hr - c.C)
+        # update HH bank deposit
+        bank[0].D_h += (Y_hr - c.C)
         
     def run(self, num_periods = None):
         logging.info("starting simulation for {} periods with {} firms".\
@@ -74,6 +80,7 @@ class Steindl(SimBloc):
 
         if num_periods is None:
             num_periods = self.num_periods
+            
         results = []
         
         for period in range(num_periods):
@@ -83,7 +90,7 @@ class Steindl(SimBloc):
             self.lag_svars()
             
             self.hh.lag_svars()
-            self.bank.new_period()
+            self.bank.lag_svars()
 
             for f in self.firms:
                 f.lag_svars()
@@ -103,7 +110,7 @@ class Steindl(SimBloc):
 
             self.calc_aggregate2()
 
-            self[0].update(self.bank[0].subset(['D_f', 'D_h', 'L']))
+            #self[0].update(self.bank[0].subset(['D_f', 'D_h', 'L']))
             results.append(dict(self[0]))
 
             logging.debug("end of period {:d}".format(period))
@@ -113,30 +120,21 @@ class Steindl(SimBloc):
         logging.info("simulation complete")
         self.results = pd.DataFrame.from_dict(results)  
                 
-    def __repr__(self):
-        if not self.initialised:
-            return super().__repr__()
-        else:
-            return """sectors\n hh: {}\n firms: {} firms\n bank: {}\n\nparams: {}\nstate vars:{}""".format(
-                self.hh, self.num_firms, self.bank, self.params, self.svars)
+#    def __repr__(self):
+#        if not self.initialised:
+#            return super().__repr__()
+#        else:
+#            return """sectors\n hh: {}\n firms: {} firms\n bank: {}\n\nparams: {}\nstate vars:{}""".format(
+#                self.hh, self.num_firms, self.bank, self.params, self.svars)
+#
                 
 class Bank(SimBloc):
     """ Banking sector """
     
-    def __init__(self, model=None):
-        super().__init__(model)
-        # initialise balance sheet
-
-        l1  = self[-1]
-        ml1 = self.model[-1]
-
-        l1.L = ml1.L
-        l1.D_h = ml1.D_h
-        l1.D_f = ml1.D_f
-
-
-    def new_period(self):
-        self.lag_svars()
+    def lag_svars(self):
+        ''' The bank needs to copy last period variables as starting
+        stocks for the current period '''
+        super().lag_svars()
         # copy balance sheet to new period
         self.svars[0].update(self.svars[-1])
         
@@ -146,9 +144,8 @@ class Bank(SimBloc):
         logging.debug("request for loan of {:.2f}".format(req_amount))
         # for now, completely elastic response:
         
-        loan_amount = req_amount
-        self.incr('L', loan_amount)
-        return loan_amount
+        self[0].L += req_amount
+        return req_amount
 
     def write_down(self, loan_amount, overdraft_amount):
         """ a firm has gone bust, write down the total loan and deposit
@@ -158,22 +155,24 @@ class Bank(SimBloc):
         # A firm was 'overdrawn'. Write off the firm's loans
         # and its overdraft
 
+        c = self[0]
+        
         # write off loans
-        self.incr('L', 0 - loan_amount)
+        c.L += (0 - loan_amount)
 
         # write off overdrafts
-        self.incr('D_f', 0 + overdraft_amount)
+        c.D_f += (0 + overdraft_amount)
 
         # households take the hit for both
-        self.incr('D_h', 0 - (loan_amount + overdraft_amount))
+        c.D_h += (0 - (loan_amount + overdraft_amount))
 
-    def update_hh_deposits(self, amount):
-        """ adjust aggregate household deposits """
-        self.incr('D_h', amount)
-
-    def update_firms_deposits(self, amount):
-        """ adjust aggregate firms deposits """
-        self.incr('D_f', amount)
+    # def update_hh_deposits(self, amount):
+    #     """ adjust aggregate household deposits """
+    #     self.incr('D_h', amount)
+    # 
+    # def update_firms_deposits(self, amount):
+    #     """ adjust aggregate firms deposits """
+    #     self.incr('D_f', amount)
 
         
     # def __repr__(self):
@@ -196,9 +195,6 @@ class Household(SimBloc):
         
         c.C = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h # cons spending
 
-    def __repr__(self):
-        return "single household\n{}".format(self.svars)
-
         
 class Firm(SimBloc):
     """ Firms sector """
@@ -206,7 +202,7 @@ class Firm(SimBloc):
     @classmethod
     def init_firms(cls, num_firms, model):
         # variables in main/macro model
-        init_vars = model.get_svars(lag = 0)
+        init_vars = model.ivars
 
         logging.debug("firm init vars from model fr: {}".format(init_vars))
         
@@ -357,7 +353,7 @@ class Firm(SimBloc):
         c.D_f = l1.D_f + delta_D_f
             
         # adjust the bank's aggregate balance sheet
-        bank.update_firms_deposits(delta_D_f)
+        bank[0].D_f += delta_D_f
         
         if c.D_f < 0:
             # firm is bankrupt. write off the firms loans and

@@ -5,7 +5,8 @@ import logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-sim1 = Steindl(num_firms = 1000, num_periods = 500, seed = 2)
+#sim1 = Steindl(num_firms = 1000, num_periods = 500, seed = 2)
+sim1 = Steindl(num_firms = 10, num_periods = 500, seed = 2)
 
 sim1.set_params(
     alpha1  = 0.7,  # consumption out of income
@@ -24,7 +25,7 @@ sim1.set_params(
     zeta    = 0.77   # size to revenue feedback 
 )
 
-sim1.set_svars(
+sim1.set_ivars(
     Y    = 34,
     Y_hr = 27,
     K    = 100,
@@ -32,15 +33,21 @@ sim1.set_svars(
     IV   = 5,
     F_n  = 2.8,
     F_r  = 2.1,
+    r    = 0.06,
+    u    = 1.46,
     D_h  = 80,
     D_f  = 136,
     L    = 80 + 136,
-    r    = 0.06,
-    u    = 1.46
 )
 
-sim1.init_sectors()
+
+sim1.initialise()
 sim1.run()
+
+
+## -------------------------------------------
+## Needs updating to new syntax.
+
 plot(sim1)
 
 sim2 = Steindl(num_firms = 1000, num_periods = 500, seed = 1)
