@@ -24,8 +24,7 @@ class Steindl(SimBloc):
         self.rng = np.random.default_rng(seed)
 
     def initialise(self):
-        ''' sets up the model by initialising firm objects
-        and state variables'''
+        ''' initialises firms and state variables'''
         
         logging.info("initialising model with {} periods {} firms"\
                      .format(self.num_periods, self.num_firms))
@@ -43,10 +42,13 @@ class Steindl(SimBloc):
         
         # set up firms
         self.firms = Firm.init_firms(self.num_firms, model = self)
+
+        # empty list to hold results
+        self.results = []
+
         
     def run(self, num_periods = None):
-        ''' runs the main simulation loop and collects
-        the numeric results '''
+        ''' runs the main simulation loop and collects the results '''
         
         logging.info("starting simulation for {} periods with {} firms".\
                      format(self.num_periods, self.num_firms))
@@ -54,21 +56,12 @@ class Steindl(SimBloc):
         if num_periods is None:
             num_periods = self.num_periods
             
-        results = []
-        
         for period in range(num_periods):
             logging.debug("start of period {:d}".format(period))
 
-            # replaced lagged state vars with current state vars
-            self.lag_svars()
+            # increment the lag on the state vars.
+            self.incr_lag()
             
-            self.hh.lag_svars()
-            self.bank.lag_svars()
-
-            for f in self.firms:
-                f.lag_svars()
-
-            # start of decision-making
             for f in self.firms:
                 f.calc_production()
 
@@ -83,16 +76,26 @@ class Steindl(SimBloc):
  
             self.calc_aggregate2()
 
-            #self[0].update(self.bank[0].subset(['D_f', 'D_h', 'L']))
-            results.append(dict(self[0]))
+            # store the current variables as the results
+            self.update_results()
 
             logging.debug("end of period {:d}".format(period))
-            logging.debug(self.bank)
-
                 
         logging.info("simulation complete")
-        self.results = pd.DataFrame.from_dict(results)  
+        self.results = pd.DataFrame.from_dict(self.results)  
 
+    def update_results(self):
+        ''' store values of current state variables as 'results' '''
+
+        # create dict of current state variables
+        results_dict = dict(self[0])
+
+        # and add state variables from bank and HH sectors
+        results_dict.update(dict(self.bank[0]))
+        results_dict.update(dict(self.hh[0]))
+        
+        self.results.append(results_dict)
+        
         
     def calc_aggregate(self):
         (p, c, l1) = self.unpack()
@@ -125,10 +128,10 @@ class Steindl(SimBloc):
 class Bank(SimBloc):
     """ Banking sector """
     
-    def lag_svars(self):
+    def incr_lag(self):
         ''' The bank needs to copy last period variables as starting
         stocks for the current period '''
-        super().lag_svars()
+        super().incr_lag()
         # copy balance sheet to new period
         self.svars[0].update(self.svars[-1])
         

@@ -1,3 +1,4 @@
+from plotsims import plot
 import copy
 
 class SimVars(dict):
@@ -51,18 +52,20 @@ class SimBloc:
     def __init__(self, model = None, lags = 1):
         self.lags = lags
 
-        # associate a bloc with a parent model if specified
+        # associate a bloc with a parent if specified
         # and copy initial state variables. Parameters
         # are shared with parent models
         if model is not None:
             self.model = model
-            #self.svars = copy.deepcopy(model.svars)
             self.params = model.params
+
+            # add a reverse pointer from the parent model
+            self.model.agents.append(self)
         else:
             self.params = SimVars()
             self.model = None
             
-            # dict of state variables, indexed by lag
+        # dict of state variables, indexed by lag
         self.svars = {}
 
         for lag in self.get_lags():
@@ -72,7 +75,9 @@ class SimBloc:
         # do not become state variables.
         self.ivars = SimVars()
         
-
+        # a list of all agents in this model
+        self.agents = []
+        
     def __repr__(self):
         if self.model is None:
             return """state vars:{}, params:{}""".format(
@@ -108,17 +113,20 @@ class SimBloc:
     def get_svars(self, lag=0):
         return self.svars[lag]
         
-    def lag_svars(self):
-        #for lag in self.get_lags():
+    def incr_lag(self):
         for lag in self.get_lags()[:-1]:
             self.svars[lag] = self.svars[lag+1]
 
         self.svars[0] = SimVars()
 
-    #def incr(self, var, amount):
-    #    if var in self.svars[0].keys():
-    #        self.svars[0][var] += amount
-    #    else:
-    #        self.svars[0][var] = amount
+        if len(self.agents):
+            for agent in self.agents:
+                agent.incr_lag()
 
+    # Copy params and init vars from another sim
+    def copy_init(self, other_sim):
+        self.params = copy.deepcopy(other_sim.params)
+        self.ivars = copy.deepcopy(other_sim.ivars)
 
+    def plot(self):
+        plot(self)
