@@ -31,14 +31,13 @@ class Steindl(SimBloc):
 
         i = self.ivars
         
-        # create HH and bank and assign state variables
-        self.hh = Household(model=self)
-        self.hh[0].Y_hr = i.Y_hr
-
+        # create bank and assign state variables
         self.bank = Bank(model=self)
         self.bank[0].L   = i.L
         self.bank[0].D_h = i.D_h
         self.bank[0].D_f = i.D_h
+
+        self[0].Y_hr = i.Y_hr
         
         # set up firms
         self.firms = Firm.init_firms(self.num_firms, model = self)
@@ -55,28 +54,48 @@ class Steindl(SimBloc):
 
         if num_periods is None:
             num_periods = self.num_periods
-            
+
         for period in range(num_periods):
             logging.debug("start of period {:d}".format(period))
 
             # increment the lag on the state vars.
             self.incr_lag()
-            
+
+            # 'unpack' shortcuts to the variables
+            (p, c, l1) = self.unpack()
+            bank = self.bank
+
+            # first firm-level decision bloc
             for f in self.firms:
                 f.calc_production()
 
-            self.hh.decide_cons()
-            self.calc_aggregate()
-            
+            # cons spending                
+            c.C = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h 
+
+            # sum total investment spending across all firms
+            c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
+
+            # GDP by expenditure
+            c.Y = c.I + c.C
+
             # allocate random 's_share' across firms
             Firm.calc_rand_share(self.firms, self.rng)
-            
+
+            # second firm-level decision bloc
             for f in self.firms:
                 f.calc_financing()
- 
-            self.calc_aggregate2()
 
-            # store the current variables as the results
+            # get aggregate wage bill and distributed profits
+            c.update(SimBloc.aggregate(self.firms, ['WB', 'F_d']))
+            
+            # household disposable income
+            r_D = p.r_L_bar
+            c.Y_hr = c.WB + (r_D * bank[-1].D_h) + c.F_d
+        
+            # update HH bank deposit
+            bank[0].D_h += (c.Y_hr - c.C)
+
+            # store the current variables as results
             self.update_results()
 
             logging.debug("end of period {:d}".format(period))
@@ -89,41 +108,11 @@ class Steindl(SimBloc):
 
         # create dict of current state variables
         results_dict = dict(self[0])
-
-        # and add state variables from bank and HH sectors
+        
+        # and add state variables from bank 
         results_dict.update(dict(self.bank[0]))
-        results_dict.update(dict(self.hh[0]))
         
         self.results.append(results_dict)
-        
-        
-    def calc_aggregate(self):
-        (p, c, l1) = self.unpack()
-
-        # sum total investment spending across all firms
-        c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
-
-        # get consumption spending from hh bloc
-        c.C = self.hh[0].C
-        c.Y = c.I + c.C
-
-    def calc_aggregate2(self):
-        (p, c, l1) = self.unpack()
-        bank = self.bank
-
-        # get aggregate wage bill and distributed profits
-        c.update(SimBloc.aggregate(self.firms, ['WB', 'F_d']))
-
-        r_m = p.r_l_bar
-
-        # household disposable income
-        Y_hr = c.WB + (r_m * bank[-1].D_h) + c.F_d
-        
-        # household disposable income
-        self.hh[0].Y_hr = Y_hr
-
-        # update HH bank deposit
-        bank[0].D_h += (Y_hr - c.C)
                 
 class Bank(SimBloc):
     """ Banking sector """
@@ -163,17 +152,6 @@ class Bank(SimBloc):
         # households take the hit for both
         c.D_h += (0 - (loan_amount + overdraft_amount))
 
-        
-class Household(SimBloc):
-    """ Household sector """
-
-    def decide_cons(self):
-        (p, c, l1) = self.unpack()
-        bank = self.model.bank
-        
-        c.C = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h # cons spending
-
-        
 class Firm(SimBloc):
     """ Firms sector """
     
@@ -262,8 +240,8 @@ class Firm(SimBloc):
         c.WB   = c.Y_s * (1 - c.m)
         
         # net interest payments
-        r_m = p.r_l_bar
-        c.it = (p.r_l_bar * l1.L) - (r_m * l1.D_f)
+        r_D = p.r_L_bar
+        c.it = (p.r_L_bar * l1.L) - (r_D * l1.D_f)
 
         # predicted current costs
         c.costs = c.WB + c.it

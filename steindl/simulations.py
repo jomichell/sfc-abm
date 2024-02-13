@@ -21,7 +21,7 @@ sim1.set_params(
     theta   = 0.5,  # desired liquidity ratio
     v       = 4,    # capital full output ratio
     llambda = 0.75, # profit retention ratio (lambda reserved)
-    r_l_bar = 0.03, # interest rate
+    r_L_bar = 0.03, # interest rate
     tau     = 0.25, # mark-up
     pr      = 1,    # labour productivity
     zeta    = 0.77   # size to revenue feedback 
@@ -88,5 +88,5 @@ sim4.params.zeta = 0.9
 sim4.initialise()
 sim4.run()
 sim4.plot()
-
+)
  
