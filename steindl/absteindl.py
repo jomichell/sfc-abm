@@ -198,10 +198,6 @@ class Firm(SimBloc):
 
         for f, s in zip(firm_list, stoch):
             f.svars[0].s_share = s
-            
-    def __repr__(self):
-        return """state vars:{}""".format(
-            self.svars)
  
     def calc_production(self):
         """ decisions made before current period revenue is known"""
