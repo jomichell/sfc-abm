@@ -69,14 +69,14 @@ class Steindl(SimBloc):
             for f in self.firms:
                 f.calc_production()
 
-            # cons spending                
-            c.C = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h 
+            # intended cons spending
+            c.C_intended = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h 
 
             # sum total investment spending across all firms
             c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
 
-            # GDP by expenditure
-            c.Y = c.I + c.C
+            # Total intended expenditure
+            c.Y_intended = c.I + c.C_intended
 
             # allocate random 's_share' across firms
             Firm.calc_rand_share(self.firms, self.rng)
@@ -85,8 +85,12 @@ class Steindl(SimBloc):
             for f in self.firms:
                 f.calc_financing()
 
-            # get aggregate wage bill and distributed profits
-            c.update(SimBloc.aggregate(self.firms, ['WB', 'F_d']))
+            # get actual spending (given possible rationing),
+            # the aggregate wage bill and distributed profits
+            c.update(SimBloc.aggregate(self.firms, ['Y', 'WB', 'F_d']))
+
+            # any rationing shows up in consumption, so adjust accordingly
+            c.C = c.C_intended - (c.Y_intended - c.Y)
             
             # household disposable income
             r_D = p.r_L_bar
@@ -219,14 +223,14 @@ class Firm(SimBloc):
         
         # expected demand is previous year's demand
         # scaled by growth of capital stock
-        c.Y_e = l1.Y * (1 + c.g_I)
+        c.Y_expected = l1.Y * (1 + c.g_I)
 
         # desired inventories based on expected sales
-        c.IV_d = p.iota * c.Y_e
+        c.IV_d = p.iota * c.Y_expected
 
         # Production based on expected sales and 
         # current excess inventories
-        c.Y_s =  c.Y_e + (c.IV_d - l1.IV)
+        c.Y_s =  c.Y_expected + (c.IV_d - l1.IV)
 
         # Don't produce a negative amount
         if c.Y_s < 0:
@@ -239,13 +243,13 @@ class Firm(SimBloc):
         r_D = p.r_L_bar
         c.it = (p.r_L_bar * l1.L) - (r_D * l1.D_f)
 
-        # predicted current costs
+        # expected current costs
         c.costs = c.WB + c.it
         
-        # predicted net profits
-        c.F_n_e = c.Y_e - c.costs
+        # expected net profits
+        c.F_n_e = c.Y_expected - c.costs
 
-        # predicted retained profits
+        # expected retained profits
         if c.F_n_e > 0:
             c.F_r_e = p.llambda * c.F_n_e
         else:
@@ -276,15 +280,29 @@ class Firm(SimBloc):
         m = self.model[0]
 
         # linear combination of capital size and stochastic 'share'
-        # gives share of total expenditure arriving as revenue at this firm
+        # gives share of total intended expenditure directed to this firm
         c.Y_share = (p.zeta * l1.K_share) + ((1-p.zeta) * c.s_share)
 
-        # units sold
-        c.Y = m.Y * c.Y_share
+        # expenditure intended (by consumers) for this firm
+        c.Y_intended = m.Y_intended * c.Y_share
 
-        # inventories 
-        c.IV = l1.IV + c.Y_s - c.Y
+        # check if there is sufficient inventory to
+        # accomodate intended expenditure
 
+        available_stock = l1.IV + c.Y_s
+
+        if c.Y_intended > available_stock:
+            c.Y = available_stock
+        else:
+            c.Y = c.Y_intended
+        
+        # updated inventories after sales
+        c.IV = available_stock - c.Y
+
+        # consistency check for negative IV
+        if c.IV < 0:
+            logging.debug("IV: {}".format(c.IV))
+        
         # profits
         c.F_t = c.Y - c.WB   # gross
         c.F_n = c.F_t - c.it # net
