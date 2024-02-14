@@ -4,7 +4,8 @@ import copy
 class SimVars(dict):
     """Simple utility class to allow 'dot' notation for 
     accessing variables"""
-    __getattr__ = dict.get
+#    __getattr__ = dict.get     # this returns None is no match
+    __getattr__ = dict.__getitem__ # this throws a KeyError
     __setattr__ = dict.__setitem__
     __delattr__ = dict.__delitem__
     
@@ -45,7 +46,12 @@ class SimBloc:
     # allow container-like access to the state variable dicts
     def __getitem__(self, idx):
         return self.svars[idx]
-        
+    
+    # and allow dot access as a shortcut to the current period
+    # state vars
+    def __getattr__(self, key):
+        return self.svars[0][key]
+
     def to_dict(self):
         return dict(self.svars[0])
     
