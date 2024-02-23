@@ -120,7 +120,7 @@ sim5.plot()
 
 
 # -----------------------------------------------------------
-# 100% retained earnings, no retained earnings
+# 100% retained earnings, no distributed earnings
 
 sim6 = Steindl(num_firms = 1000, num_periods = 500, seed = 1)
 sim6.copy_init(sim1)
