@@ -72,7 +72,7 @@ class Steindl(SimBloc):
             # intended cons spending
             c.C_intended = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h 
 
-            # sum total investment spending across all firms
+            # sum investment spending and capital stock across firms
             c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
 
             # Total intended expenditure
