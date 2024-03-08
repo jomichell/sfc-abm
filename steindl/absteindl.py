@@ -23,6 +23,9 @@ class Steindl(SimBloc):
         # with a specific seed.
         self.rng = np.random.default_rng(seed)
 
+        self.params.ignore_inventories = False
+        self.params.ignore_bankruptcies = False
+    
     def initialise(self):
         ''' initialises firms and state variables'''
         
@@ -291,7 +294,7 @@ class Firm(SimBloc):
 
         available_stock = l1.IV + c.Y_s
 
-        if c.Y_intended > available_stock:
+        if c.Y_intended > available_stock or p.ignore_inventories:
             c.Y = available_stock
         else:
             c.Y = c.Y_intended
@@ -325,7 +328,7 @@ class Firm(SimBloc):
         # adjust the bank's aggregate balance sheet
         bank[0].D_f += delta_D_f
         
-        if c.D_f < 0:
+        if c.D_f < 0 and not p.ignore_bankruptcies:
             # firm is bankrupt. write off the firms loans and
             # 'overdrafts' (negative deposits)
             bank.write_down(loan_amount = c.L, overdraft_amount = 0 - c.D_f)
