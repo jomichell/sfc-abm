@@ -130,3 +130,18 @@ sim6.params.llambda = 1
 sim6.initialise()
 sim6.run()
 sim6.plot()
+
+
+# -----------------------------------------------------------
+# Ignore inventories and bankruptcies, single firm
+
+sim7 = Steindl(num_firms = 1, num_periods = 500, seed = 1)
+sim7.copy_init(sim1)
+
+sim7.params.ignore_inventories = True
+sim7.params.ignore_bankruptcies = True
+sim7.params.zeta = 1
+
+sim7.initialise()
+sim7.run()
+sim7.plot()
