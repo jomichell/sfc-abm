@@ -17,10 +17,9 @@ sim1 = Steindl(num_firms = 1000, num_periods = 500, seed = 2)
 sim1.set_params(
     alpha1  = 0.7,  # consumption out of income
     alpha2  = 0.1,  # consumption out of wealth
-    alpha3  = 0.0,  # inelastic saving out of salaries etc.
     gamma0  = 0.02, # trend growth
-    gamma_r = 0.2,  # profit rate multiplier
-    gamma_u = 0.04, # utilisation rate multplier
+    gamma_m = 0.05,  # profit margin sensitivity
+    gamma_u = 0.05, # utilisation rate sensitivity
     iota    = 0.2,  # desired inventory to output ratio
     theta   = 0.5,  # desired liquidity ratio
     v       = 4,    # capital full output ratio
@@ -133,14 +132,17 @@ sim6.plot()
 
 
 # -----------------------------------------------------------
-# Ignore inventories and bankruptcies, single firm
+# Baseline model
 
-sim7 = Steindl(num_firms = 1, num_periods = 500, seed = 1)
+sim7 = Steindl(num_firms = 1000, num_periods = 500, seed = 1)
 sim7.copy_init(sim1)
 
-sim7.params.ignore_inventories = True
-sim7.params.ignore_bankruptcies = True
+# run a simplified 'baseline' model
+sim7.params.baseline_model = True
+
+sim7.params.llambda = 1
 sim7.params.zeta = 1
+#sim7.params.alpha2 = 0.2
 
 sim7.initialise()
 sim7.run()

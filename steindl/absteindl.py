@@ -23,8 +23,9 @@ class Steindl(SimBloc):
         # with a specific seed.
         self.rng = np.random.default_rng(seed)
 
-        self.params.ignore_inventories = False
+        # self.params.ignore_inventories = False
         self.params.ignore_bankruptcies = False
+        self.params.baseline_model = False
     
     def initialise(self):
         ''' initialises firms and state variables'''
@@ -68,32 +69,35 @@ class Steindl(SimBloc):
             (p, c, l1) = self.unpack()
             bank = self.bank
 
-            # first firm-level decision bloc
+            # each firm chooses its investment spending
             for f in self.firms:
-                f.calc_production()
-
-            # intended cons spending
-            c.C_intended = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h 
+                f.decide_investment()
 
             # sum investment spending and capital stock across firms
             c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
 
-            # Total intended expenditure
-            c.Y_intended = c.I + c.C_intended
+            # household decided (intended) cons spending
+            c.C_intended = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h 
+
+            # Total (intended) expenditure
+            c.E_intended = c.I + c.C_intended
 
             # allocate random 's_share' across firms
             Firm.calc_rand_share(self.firms, self.rng)
 
             # second firm-level decision bloc
             for f in self.firms:
-                f.calc_financing()
+                if p.baseline_model:
+                    f.decide_production_baseline()
+                else:
+                    f.decide_production()
 
             # get actual spending (given possible rationing),
             # the aggregate wage bill and distributed profits
             c.update(SimBloc.aggregate(self.firms, ['Y', 'WB', 'F_d']))
 
             # any rationing shows up in consumption, so adjust accordingly
-            c.C = c.C_intended - (c.Y_intended - c.Y)
+            c.C = c.C_intended - (c.E_intended - c.Y)
             
             # household disposable income
             r_D = p.r_L_bar
@@ -176,9 +180,9 @@ class Firm(SimBloc):
         
         firms = []
         for K_share in K_rand:
-            new_firm = Firm(model)
+            firm = Firm(model)
 
-            new_firm.set_svars(
+            firm.set_svars(
                 lag  = 0,
                 K_share = K_share, # proportion of total K
                 fsize = num_firms * K_share, # firm fsize rel. to avg.
@@ -193,7 +197,12 @@ class Firm(SimBloc):
                 I     = init_vars.I   * K_share,
                 IV    = init_vars.IV  * K_share,
             )
-            firms.append(new_firm)
+
+            # calculate the initial profit margin
+            firm[0].tau = model.params.tau * firm.fsize
+            firm[0].m   = firm.tau/(1+firm.tau)
+            
+            firms.append(firm)
 
         return(firms)
 
@@ -206,13 +215,13 @@ class Firm(SimBloc):
         for f, s in zip(firm_list, stoch):
             f.svars[0].s_share = s
  
-    def calc_production(self):
-        """ decisions made before current period revenue is known"""
+    def decide_investment(self):
+        """ firms decide investment spending on the basis of lagged profit rate"""
         (p, c, l1) = self.unpack()
         bank = self.model.bank
         
         # Investment (expenditure) function in growth terms
-        c.g_I = p.gamma0 + (p.gamma_r * l1.r) + (p.gamma_u * l1.u)
+        c.g_I = p.gamma0 + (p.gamma_m * l1.m) + (p.gamma_u * l1.u)
 
         # Investment (expenditure) in level terms
         c.I = c.g_I * l1.K
@@ -220,37 +229,102 @@ class Firm(SimBloc):
         # elastic supply side means increase in K will equal spending on I
         c.K = l1.K + c.I
 
-        # Mark-up and profit margin depend on firm size
+    def decide_production_baseline(self):
+        """ simplified baseline set of firm behaviours based on
+        elastic supply response to expenditure """
+        
+        (p, c, l1) = self.unpack()
+        bank = self.model.bank
+        m = self.model[0]
+
+        # linear combination of capital size and stochastic 'share'
+        # gives share of total intended expenditure directed to this firm
+        c.Y_share = (p.zeta * l1.K_share) + ((1-p.zeta) * c.s_share)
+        
+        # expenditure arriving at this firm
+        c.E = m.E_intended * c.Y_share
+        
+        # produce and sell whatever is requested
+        c.Y = c.Y_s = c.E
+
+        # Wage bill -- mark-up and profit margin depend on firm size
         c.tau = p.tau * l1.fsize
         c.m   = c.tau/(1+c.tau)
-        
-        # expected demand is previous year's demand
-        # scaled by growth of capital stock
-        c.Y_expected = l1.Y * (1 + c.g_I)
-
-        # desired inventories based on expected sales
-        c.IV_d = p.iota * c.Y_expected
-
-        # Production based on expected sales and 
-        # current excess inventories
-        c.Y_s =  c.Y_expected + (c.IV_d - l1.IV)
-
-        # Don't produce a negative amount
-        if c.Y_s < 0:
-            c.Y_s = 0
-        
-        # Wage bill
         c.WB   = c.Y_s * (1 - c.m)
         
         # net interest payments
         r_D = p.r_L_bar
         c.it = (p.r_L_bar * l1.L) - (r_D * l1.D_f)
 
-        # expected current costs
+        # profits
+        c.F_t = c.Y - c.WB   # gross
+        c.F_n = c.F_t - c.it # net
+        c.F_r = p.llambda * c.F_n # retained
+        c.F_d = c.F_n - c.F_r # distributed
+
+        
+        # loans -- borrow to cover investment if earnings are insufficient
+        L_req = c.F_r - c.I
+        delta_L = bank.request_loan(L_req)            
+        c.L = l1.L + delta_L
+        
+        # deposits
+        delta_D_f = c.F_r + (c.L - l1.L) -  c.I
+        c.D_f = l1.D_f + delta_D_f
+        bank[0].D_f += delta_D_f
+
+        # summary indicators for next period allocation and decision making
+        c.r   = c.F_t / c.K # profit rate
+        c.u  = c.Y * (p.v / c.K)  # utilisation. should this be Y or Y_s?
+        c.K_share = c.K / m.K
+        c.fsize = c.K_share * self.model.num_firms 
+
+ 
+    def decide_production(self):
+        """ decisions and accounting made after individual
+        firm-level demand and  revenue is known """
+        
+        (p, c, l1) = self.unpack()
+        bank = self.model.bank
+        m = self.model[0]
+
+
+        # linear combination of capital size and stochastic 'share'
+        # gives share of total intended expenditure directed to this firm
+        c.Y_share = (p.zeta * l1.K_share) + ((1-p.zeta) * c.s_share)
+        
+        # expected demand is previous year's demand
+        # scaled by growth of capital stock
+        c.E_expected = l1.Y * (1 + c.g_I)
+
+        # expenditure intended (by consumers) for this firm
+        c.E_intended = m.E_intended * c.Y_share
+        
+        # desired inventories chosen based on expected sales
+        c.IV_d = p.iota * c.E_expected
+        
+        # Production based on expected sales and 
+        # current excess inventories
+        c.Y_s =  c.E_expected + (c.IV_d - l1.IV)
+        
+        # Don't produce a negative amount
+        if c.Y_s < 0:
+            c.Y_s = 0
+            
+        # Wage bill -- mark-up and profit margin depend on firm size
+        c.tau = p.tau * l1.fsize
+        c.m   = c.tau/(1+c.tau)
+        c.WB   = c.Y_s * (1 - c.m)
+        
+        # net interest payments
+        r_D = p.r_L_bar
+        c.it = (p.r_L_bar * l1.L) - (r_D * l1.D_f)
+
+        # current costs
         c.costs = c.WB + c.it
         
         # expected net profits
-        c.F_n_e = c.Y_expected - c.costs
+        c.F_n_e = c.E_expected - c.costs
 
         # expected retained profits
         if c.F_n_e > 0:
@@ -276,28 +350,15 @@ class Firm(SimBloc):
         delta_L = bank.request_loan(L_req)            
         c.L = l1.L + delta_L
 
-    def calc_financing(self):
-        """ firm decisions after revenue is known plus balance sheet updates """
-        (p, c, l1) = self.unpack()
-        bank = self.model.bank
-        m = self.model[0]
-
-        # linear combination of capital size and stochastic 'share'
-        # gives share of total intended expenditure directed to this firm
-        c.Y_share = (p.zeta * l1.K_share) + ((1-p.zeta) * c.s_share)
-
-        # expenditure intended (by consumers) for this firm
-        c.Y_intended = m.Y_intended * c.Y_share
-
         # check if there is sufficient inventory to
         # accomodate intended expenditure
 
         available_stock = l1.IV + c.Y_s
 
-        if c.Y_intended > available_stock or p.ignore_inventories:
+        if c.E_intended > available_stock:
             c.Y = available_stock
         else:
-            c.Y = c.Y_intended
+            c.Y = c.E_intended
         
         # updated inventories after sales
         c.IV = available_stock - c.Y
