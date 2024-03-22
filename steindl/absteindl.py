@@ -24,8 +24,10 @@ class Steindl(SimBloc):
         self.rng = np.random.default_rng(seed)
 
         # self.params.ignore_inventories = False
-        self.params.ignore_bankruptcies = False
-        self.params.baseline_model = False
+        self.flags.ignore_bankruptcies = False
+        self.flags.baseline_model = False
+        self.flags.firm_results = False
+
     
     def initialise(self):
         ''' initialises firms and state variables'''
@@ -41,7 +43,7 @@ class Steindl(SimBloc):
         self.bank[0].D_h = i.D_h
         self.bank[0].D_f = i.D_h
 
-        self[0].Y_hr = i.Y_hr
+        self[0].Y_h = i.Y_h
         
         # set up firms
         self.firms = Firm.init_firms(self.num_firms, model = self)
@@ -76,8 +78,8 @@ class Steindl(SimBloc):
             # sum investment spending and capital stock across firms
             c.update(SimBloc.aggregate(self.firms, ['I', 'K']))
 
-            # household decided (intended) cons spending
-            c.C_intended = p.alpha1 * l1.Y_hr + p.alpha2 * bank[-1].D_h 
+            # household decides (intended) cons spending
+            c.C_intended = p.alpha1 * l1.Y_h + p.alpha2 * bank[-1].D_h 
 
             # Total (intended) expenditure
             c.E_intended = c.I + c.C_intended
@@ -87,7 +89,9 @@ class Steindl(SimBloc):
 
             # second firm-level decision bloc
             for f in self.firms:
-                if p.baseline_model:
+                logging.debug("starting production decisions for firm {}".format(f.idx))
+                
+                if self.flags.baseline_model:
                     f.decide_production_baseline()
                 else:
                     f.decide_production()
@@ -101,30 +105,53 @@ class Steindl(SimBloc):
             
             # household disposable income
             r_D = p.r_L_bar
-            c.Y_hr = c.WB + (r_D * bank[-1].D_h) + c.F_d
+            c.Y_h = c.WB + (r_D * bank[-1].D_h) + c.F_d
         
             # update HH bank deposit
-            bank[0].D_h += (c.Y_hr - c.C)
+            bank[0].D_h += (c.Y_h - c.C)
 
             # store the current variables as results
-            self.update_results()
+            self.update_results(period)
 
             logging.debug("end of period {:d}".format(period))
                 
         logging.info("simulation complete")
-        self.results = pd.DataFrame.from_dict(self.results)  
 
-    def update_results(self):
+        self.compile_results()
+        logging.info("results compiled")
+
+        
+    def update_results(self, period):
         ''' store values of current state variables as 'results' '''
 
         # create dict of current state variables
         results_dict = dict(self[0])
+        results_dict['time'] = period
         
         # and add state variables from bank 
         results_dict.update(dict(self.bank[0]))
         
         self.results.append(results_dict)
-                
+
+        if self.flags.firm_results:
+            for f in self.firms:
+                f.update_results(period)
+            
+    def compile_results(self):
+        self.results = pd.DataFrame.from_dict(self.results)  
+        self.results['agent'] = 'aggregate'
+        self.results['agent_idx'] = None
+
+        if self.flags.firm_results:
+            for f in self.firms:
+                firm_results = pd.DataFrame.from_dict(f.results)
+                firm_results['agent'] = 'firm'
+                firm_results['agent_idx'] = f.idx
+
+                self.results = pd.concat([self.results, firm_results])
+
+        self.results = self.results.set_index(['agent', 'agent_idx', 'time'])
+        
 class Bank(SimBloc):
     """ Banking sector """
     
@@ -170,7 +197,8 @@ class Firm(SimBloc):
     def init_firms(cls, num_firms, model):
         # variables in main/macro model
         init_vars = model.ivars
-
+        p = model.params
+        
         logging.debug("firm init vars from model fr: {}".format(init_vars))
         
         # create fixed number of firms with randomised shares of main variables
@@ -179,8 +207,9 @@ class Firm(SimBloc):
         K_rand = K_rand/K_rand.sum() 
         
         firms = []
-        for K_share in K_rand:
+        for firm_idx, K_share in enumerate(K_rand):                 
             firm = Firm(model)
+            firm.idx = firm_idx
 
             firm.set_svars(
                 lag  = 0,
@@ -198,9 +227,12 @@ class Firm(SimBloc):
                 IV    = init_vars.IV  * K_share,
             )
 
-            # calculate the initial profit margin
-            firm[0].tau = model.params.tau * firm.fsize
-            firm[0].m   = firm.tau/(1+firm.tau)
+            # calculate the initial profit margin using K_share
+            # because Y_share has not yet been calculated
+            firm[0].tau = p.tau_bar + p.kappa * K_share
+            firm[0].m   = firm.tau/(1 + firm.tau)
+
+            firm.results = []
             
             firms.append(firm)
 
@@ -209,12 +241,14 @@ class Firm(SimBloc):
     @classmethod
     def calc_rand_share(cls, firm_list, rng):
         """ calculates a random 'share' for each firm (replace with dirichlet?)"""
-        stoch = np.array([rng.random() for f in firm_list])
+
+        num_firms = len(firm_list)
+        stoch = rng.random(num_firms)
         stoch = stoch/stoch.sum()
 
         for f, s in zip(firm_list, stoch):
             f.svars[0].s_share = s
- 
+
     def decide_investment(self):
         """ firms decide investment spending on the basis of lagged profit rate"""
         (p, c, l1) = self.unpack()
@@ -229,61 +263,13 @@ class Firm(SimBloc):
         # elastic supply side means increase in K will equal spending on I
         c.K = l1.K + c.I
 
-    def decide_production_baseline(self):
-        """ simplified baseline set of firm behaviours based on
-        elastic supply response to expenditure """
-        
-        (p, c, l1) = self.unpack()
-        bank = self.model.bank
-        m = self.model[0]
-
-        # linear combination of capital size and stochastic 'share'
-        # gives share of total intended expenditure directed to this firm
-        c.Y_share = (p.zeta * l1.K_share) + ((1-p.zeta) * c.s_share)
-        
-        # expenditure arriving at this firm
-        c.E = m.E_intended * c.Y_share
-        
-        # produce and sell whatever is requested
-        c.Y = c.Y_s = c.E
-
-        # Wage bill -- mark-up and profit margin depend on firm size
-        c.tau = p.tau * l1.fsize
-        c.m   = c.tau/(1+c.tau)
-        c.WB   = c.Y_s * (1 - c.m)
-        
-        # net interest payments
-        r_D = p.r_L_bar
-        c.it = (p.r_L_bar * l1.L) - (r_D * l1.D_f)
-
-        # profits
-        c.F_t = c.Y - c.WB   # gross
-        c.F_n = c.F_t - c.it # net
-        c.F_r = p.llambda * c.F_n # retained
-        c.F_d = c.F_n - c.F_r # distributed
-
-        
-        # loans -- borrow to cover investment if earnings are insufficient
-        L_req = c.F_r - c.I
-        delta_L = bank.request_loan(L_req)            
-        c.L = l1.L + delta_L
-        
-        # deposits
-        delta_D_f = c.F_r + (c.L - l1.L) -  c.I
-        c.D_f = l1.D_f + delta_D_f
-        bank[0].D_f += delta_D_f
-
-        # summary indicators for next period allocation and decision making
-        c.r   = c.F_t / c.K # profit rate
-        c.u  = c.Y * (p.v / c.K)  # utilisation. should this be Y or Y_s?
-        c.K_share = c.K / m.K
-        c.fsize = c.K_share * self.model.num_firms 
-
- 
+  
     def decide_production(self):
         """ decisions and accounting made after individual
-        firm-level demand and  revenue is known """
-        
+        firm-level demand and revenue is calculated. Firms are
+        assumed to make decisions without knowledge of their
+        actual share of expenditure. """
+
         (p, c, l1) = self.unpack()
         bank = self.model.bank
         m = self.model[0]
@@ -311,8 +297,12 @@ class Firm(SimBloc):
         if c.Y_s < 0:
             c.Y_s = 0
             
-        # Wage bill -- mark-up and profit margin depend on firm size
-        c.tau = p.tau * l1.fsize
+        # Wage bill. First need mark-up and profit margin which
+        # depend on share of revenue
+
+        c.tau = p.tau_bar + p.kappa * c.Y_share
+        
+        #c.tau = p.tau * l1.fsize
         c.m   = c.tau/(1+c.tau)
         c.WB   = c.Y_s * (1 - c.m)
         
@@ -389,7 +379,7 @@ class Firm(SimBloc):
         # adjust the bank's aggregate balance sheet
         bank[0].D_f += delta_D_f
         
-        if c.D_f < 0 and not p.ignore_bankruptcies:
+        if c.D_f < 0 and not self.flags.ignore_bankruptcies:
             # firm is bankrupt. write off the firms loans and
             # 'overdrafts' (negative deposits)
             bank.write_down(loan_amount = c.L, overdraft_amount = 0 - c.D_f)
@@ -402,6 +392,80 @@ class Firm(SimBloc):
 
         # size measures for next period allocation and decision making
         c.K_share = c.K / m.K
-        c.fsize = c.K_share * self.model.num_firms 
+        c.fsize = c.K_share * self.model.num_firms
 
     
+    def decide_production_baseline(self):
+        """ simplified baseline set of firm behaviours based on
+        elastic supply response to expenditure """
+
+        (p, c, l1) = self.unpack()
+        bank = self.model.bank
+        m = self.model[0]
+
+        # linear combination of capital size and stochastic 'share'
+        # gives share of total intended expenditure directed to this firm
+        c.Y_share = (p.zeta * l1.K_share) + ((1-p.zeta) * c.s_share)
+        
+        # expenditure arriving at this firm
+        c.E = m.E_intended * c.Y_share
+        
+        # produce and sell whatever is requested
+        c.Y = c.Y_s = c.E
+
+        # Wage bill -- mark-up and profit margin depend on firm size
+        c.tau = p.tau_bar + p.kappa * c.Y_share
+        #c.tau = p.tau * l1.fsize
+        c.m   = c.tau/(1+c.tau)
+        c.WB   = c.Y_s * (1 - c.m)
+        
+        # net interest payments
+        r_D = p.r_L_bar
+        c.it = (p.r_L_bar * l1.L) - (r_D * l1.D_f)
+
+        # profits
+        c.F_t = c.Y - c.WB   # gross
+        c.F_n = c.F_t - c.it # net
+        c.F_r = p.llambda * c.F_n # retained
+        c.F_d = c.F_n - c.F_r # distributed
+        
+        # calculate firm's deposit if it doesn't borrow
+        c.D_f_e = l1.D_f + c.F_r - c.I
+
+        # figure out how much to borrow. if cash on hand greater
+        # than zero, borrow nothing otherwise ask to borrow
+        # the difference
+        
+        if c.D_f_e > 0:
+            L_req = 0
+        else:
+            L_req = 0 - c.D_f_e
+
+        delta_L = bank.request_loan(L_req)            
+        c.L = l1.L + delta_L
+
+        # # loans -- borrow to cover investment if earnings are insufficient
+        # L_req = c.F_r - c.I
+        # delta_L = bank.request_loan(L_req)            
+        # c.L = l1.L + delta_L
+        
+        # deposits
+        delta_D_f = c.F_r + delta_L -  c.I
+        c.D_f = l1.D_f + delta_D_f
+        bank[0].D_f += delta_D_f
+        
+        logging.debug("change in deposit: {}".format(delta_D_f))
+
+        # summary indicators for next period allocation and decision making
+        c.r   = c.F_t / c.K # profit rate
+        c.u  = c.Y * (p.v / c.K)  # utilisation. should this be Y or Y_s?
+        c.K_share = c.K / m.K
+        c.fsize = c.K_share * self.model.num_firms 
+
+    def update_results(self, period):
+        ''' store values of current firm state variables as 'results' '''
+        
+        firm_results = dict(self[0])
+        firm_results['time'] = period
+        
+        self.results.append(firm_results)

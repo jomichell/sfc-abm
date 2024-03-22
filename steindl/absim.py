@@ -64,11 +64,13 @@ class SimBloc:
         if model is not None:
             self.model = model
             self.params = model.params
+            self.flags = model.flags
 
             # add a reverse pointer from the parent model
             self.model.agents.append(self)
         else:
             self.params = SimVars()
+            self.flags = SimVars()
             self.model = None
             
         # dict of state variables, indexed by lag
@@ -132,7 +134,8 @@ class SimBloc:
     # Copy params and init vars from another sim
     def copy_init(self, other_sim):
         self.params = copy.deepcopy(other_sim.params)
+        self.flags = copy.deepcopy(other_sim.flags)
         self.ivars = copy.deepcopy(other_sim.ivars)
 
-    def plot(self):
-        plot(self)
+    def plot(self, skip_periods = 0):
+        plot(self, skip_periods)

@@ -10,7 +10,7 @@ logger.setLevel(logging.INFO)
 
 
 # create the simulation model
-sim1 = Steindl(num_firms = 1000, num_periods = 500, seed = 2)
+sim1 = Steindl(num_firms = 1000, num_periods = 500, seed = 1)
 
 
 # set the model parameters
@@ -25,7 +25,8 @@ sim1.set_params(
     v       = 4,    # capital full output ratio
     llambda = 0.75, # profit retention ratio (lambda reserved)
     r_L_bar = 0.03, # interest rate
-    tau     = 0.25, # mark-up
+    tau_bar = 0.25, # mark-up
+    kappa   = 0.5,   # degree of mark-up adjustment to market share
     pr      = 1,    # labour productivity
     zeta    = 0.77   # size to revenue feedback 
 )
